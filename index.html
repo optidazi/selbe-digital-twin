@@ -1,0 +1,1197 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="utf-8">
+  <title>Ulaanbaatar Digital Twin Pilot Project 2026</title>
+  <script src="https://cesium.com/downloads/cesiumjs/releases/1.144/Build/Cesium/Cesium.js"></script>
+  <link href="https://cesium.com/downloads/cesiumjs/releases/1.144/Build/Cesium/Widgets/widgets.css" rel="stylesheet">
+  <script src="config.js"></script>
+  <style>
+    html, body, #cesiumContainer {
+      width: 100%;
+      height: 100%;
+      margin: 0;
+      padding: 0;
+      overflow: hidden;
+    }
+
+    #titleBar {
+      position: absolute;
+      top: 0;
+      left: 0;
+      right: 0;
+      z-index: 999;
+      padding: 14px 20px;
+      background: linear-gradient(to bottom, rgba(8, 14, 24, 0.85), rgba(8, 14, 24, 0));
+      pointer-events: none;
+      font-family: "Helvetica Neue", Arial, sans-serif;
+      color: #fff;
+    }
+
+    #titleBar h1 {
+      margin: 0;
+      font-size: 20px;
+      font-weight: 600;
+      letter-spacing: 0.02em;
+      text-shadow: 0 1px 3px rgba(0, 0, 0, 0.6);
+    }
+
+    #titleBar p {
+      margin: 3px 0 0;
+      font-size: 12px;
+      font-weight: 400;
+      opacity: 0.75;
+      text-shadow: 0 1px 3px rgba(0, 0, 0, 0.6);
+    }
+
+    /* Planning tools panel */
+    #panel {
+      position: absolute;
+      top: 70px;
+      left: 12px;
+      z-index: 1000;
+      width: 310px;
+      max-height: calc(100% - 210px);
+      display: flex;
+      flex-direction: column;
+      background: rgba(14, 20, 30, 0.9);
+      border: 1px solid rgba(255, 255, 255, 0.12);
+      border-radius: 6px;
+      font: 13px/1.4 "Helvetica Neue", Arial, sans-serif;
+      color: #e6e9ee;
+    }
+    #panelHead {
+      display: flex;
+      justify-content: space-between;
+      align-items: center;
+      padding: 8px 12px;
+      font-weight: 600;
+      border-bottom: 1px solid rgba(255, 255, 255, 0.1);
+    }
+    #panelBody { overflow-y: auto; padding: 4px 0; }
+    #panel.collapsed #panelBody { display: none; }
+    #panel details { border-bottom: 1px solid rgba(255, 255, 255, 0.07); padding: 0 12px; }
+    #panel summary { cursor: pointer; padding: 8px 0; font-weight: 600; color: #9fd3ff; }
+    #panel details > *:not(summary) { margin: 0 0 8px; }
+    #panel label { display: block; }
+    #panel label.chk { display: flex; gap: 6px; align-items: center; }
+    #panel input[type=number], #panel input[type=date] {
+      width: 100%; box-sizing: border-box; margin-top: 2px; padding: 3px 5px;
+      background: #1d2635; color: #e6e9ee; border: 1px solid #3a4658; border-radius: 3px;
+    }
+    #panel input[type=range] { width: 100%; }
+    #panel button {
+      background: #2b3a50; color: #e6e9ee; border: 1px solid #44566f; border-radius: 3px;
+      padding: 4px 8px; margin: 0 4px 4px 0; cursor: pointer; font: inherit;
+    }
+    #panel button:hover { background: #3a4e6b; }
+    #panel button.active { background: #1e88e5; border-color: #64b5f6; }
+    #panel button.link { background: none; border: none; color: #9fd3ff; padding: 0; text-decoration: underline; }
+    #panel .row { display: flex; flex-wrap: wrap; }
+    #panel .grid { display: grid; grid-template-columns: 1fr 1fr 1fr; gap: 6px; }
+    #panel .grid label { font-size: 11px; }
+    #panel .result { background: rgba(255, 255, 255, 0.05); border-radius: 3px; padding: 6px 8px; min-height: 1em; }
+    #panel .result:empty { display: none; }
+    #panel .warn { font-size: 11px; color: #ffcc80; }
+    #panel ul.list { list-style: none; padding: 0; }
+    #panel ul.list li { padding: 5px 0; border-top: 1px solid rgba(255, 255, 255, 0.07); }
+    #panel ul.list li .meta { font-size: 11px; opacity: 0.8; }
+    #panel ul.list li.over .meta { color: #ff8a80; opacity: 1; }
+    #panel ul.list li input[type=number] { width: 70px; display: inline-block; }
+    #panel .legend { display: flex; flex-wrap: wrap; gap: 6px; font-size: 11px; }
+    #panel .legend span::before {
+      content: ""; display: inline-block; width: 10px; height: 10px; margin-right: 3px;
+      vertical-align: -1px; background: var(--c);
+    }
+
+    #status, #readout {
+      position: absolute;
+      left: 50%;
+      transform: translateX(-50%);
+      z-index: 1000;
+      padding: 4px 10px;
+      border-radius: 4px;
+      background: rgba(14, 20, 30, 0.85);
+      font: 12px "Helvetica Neue", Arial, sans-serif;
+      color: #e6e9ee;
+      pointer-events: none;
+      white-space: nowrap;
+    }
+    #status { top: 70px; background: rgba(30, 136, 229, 0.92); }
+    #readout { bottom: 36px; }
+    #status:empty, #readout:empty { display: none; }
+  </style>
+</head>
+<body>
+  <div id="cesiumContainer"></div>
+
+  <div id="titleBar">
+    <h1>Ulaanbaatar Digital Twin Pilot Project 2026</h1>
+    <p>Geosan LLC &middot; Selbe &middot; 3D mesh</p>
+  </div>
+
+  <div id="panel">
+    <div id="panelHead">
+      <span>Planning tools</span>
+      <button id="panelToggle" title="Hide / show">&ndash;</button>
+    </div>
+    <div id="panelBody">
+      <details open>
+        <summary>Views &amp; layers</summary>
+        <div class="row">
+          <button id="viewOverview">Overview</button>
+          <button id="viewTop">Top-down</button>
+          <button id="viewSave">Save current view</button>
+        </div>
+        <ul id="viewList" class="list"></ul>
+        <label class="chk"><input type="checkbox" id="layerMesh" checked> Selbe 3D mesh (Get3D, Oct 2026)</label>
+        <label class="chk"><input type="checkbox" id="layerOsm" checked> OSM buildings (outside survey area)</label>
+      </details>
+
+      <details>
+        <summary>Measure</summary>
+        <div class="row">
+          <button id="mDist">Distance</button>
+          <button id="mArea">Area</button>
+          <button id="mHeight">Height difference</button>
+          <button id="mBldg">Building height</button>
+        </div>
+        <div id="measureResult" class="result"></div>
+        <button id="mClear" class="link">Clear measurements</button>
+      </details>
+
+      <details>
+        <summary>Sun &amp; shadows</summary>
+        <label>Date <input type="date" id="sunDate"></label>
+        <div class="row" id="sunPresets">
+          <button data-date="03-20">Equinox</button>
+          <button data-date="06-21">Summer solstice</button>
+          <button data-date="12-21">Winter solstice</button>
+        </div>
+        <label>Time: <span id="sunTimeLabel"></span> (UB time)
+          <input type="range" id="sunTime" min="5" max="21" step="0.25" value="12"></label>
+        <label class="chk"><input type="checkbox" id="shadows"> Show shadows</label>
+      </details>
+
+      <details>
+        <summary>Proposed buildings</summary>
+        <div class="grid">
+          <label>Height (m) <input type="number" id="propHeight" value="15" min="1" step="1"></label>
+          <label>Floor-to-floor (m) <input type="number" id="floorHeight" value="3" min="2" step="0.1"></label>
+          <label>Height limit (m) <input type="number" id="heightLimit" value="30" min="1" step="1"></label>
+        </div>
+        <button id="propDraw">Draw footprint</button>
+        <label class="chk"><input type="checkbox" id="clearSite"> Remove existing mesh inside footprints</label>
+        <ul id="propList" class="list"></ul>
+        <div id="propSummary" class="result"></div>
+      </details>
+
+      <details>
+        <summary>Line of sight</summary>
+        <label>Eye height (m) <input type="number" id="eyeHeight" value="1.7" min="0" step="0.1"></label>
+        <button id="losRun">Pick observer &amp; target</button>
+        <button id="losClear" class="link">Clear</button>
+        <div id="losResult" class="result"></div>
+      </details>
+
+      <details>
+        <summary>Water level (illustrative)</summary>
+        <label class="chk"><input type="checkbox" id="waterShow"> Show water surface</label>
+        <label>Level: <span id="waterLabel">&hellip;</span>
+          <input type="range" id="waterLevel" step="0.1"></label>
+        <p class="warn">A flat water surface for discussion only. This is not a flood model.
+          Heights are approximate (a few metres) until Get3D supplies corrected heights.</p>
+      </details>
+
+      <details>
+        <summary>Rain flood simulation (screening)</summary>
+        <div class="row" id="stormPresets">
+          <button data-i="10" data-d="1">Moderate</button>
+          <button data-i="30" data-d="1">Heavy</button>
+          <button data-i="50" data-d="2">Extreme</button>
+        </div>
+        <div class="grid">
+          <label>Rain (mm/h) <input type="number" id="fRain" value="30" min="0" step="1"></label>
+          <label>Rain for (h) <input type="number" id="fDur" value="1" min="0.1" step="0.25"></label>
+          <label>Simulate (h) <input type="number" id="fTotal" value="3" min="0.25" step="0.25"></label>
+          <label>Infiltration (mm/h) <input type="number" id="fInf" value="5" min="0" step="1"></label>
+          <label>Manning's n <input type="number" id="fN" value="0.035" min="0.01" step="0.005"></label>
+          <label>Grid (m) <input type="number" id="fRes" value="10" min="5" step="5"></label>
+        </div>
+        <label class="chk"><input type="checkbox" id="fObst" checked> Proposed buildings block flow</label>
+        <button id="fRun">Run</button>
+        <button id="fPause">Pause</button>
+        <button id="fReset" class="link">Reset</button>
+        <label class="chk"><input type="checkbox" id="fShowMax"> Show maximum depth over the event</label>
+        <div class="legend" id="fLegend"></div>
+        <div id="fStats" class="result"></div>
+        <p class="warn">Screening only. Ground is Cesium World Terrain (about 20 m detail).
+          Existing buildings, drains, culverts and channels are not modelled, and edges are free outflow.
+          Use it to find where water collects; use HEC-RAS / SWMM for design decisions.</p>
+      </details>
+
+      <details>
+        <summary>Notes &amp; export</summary>
+        <button id="noteAdd">Add note</button>
+        <ul id="noteList" class="list"></ul>
+        <button id="exportBtn">Export proposals &amp; notes (GeoJSON)</button>
+      </details>
+    </div>
+  </div>
+
+  <div id="status"></div>
+  <div id="readout"></div>
+
+  <script type="module">
+    Cesium.Ion.defaultAccessToken = window.CESIUM_ION_TOKEN;
+
+    // Tile filenames contain "+", which ion's storage reads as a space -> 404.
+    // Percent-encode it in the path before every request.
+    const _loadWithXhr = Cesium.Resource._Implementations.loadWithXhr;
+    Cesium.Resource._Implementations.loadWithXhr = function (url) {
+      if (typeof url === 'string' && url.indexOf('+') !== -1) {
+        const i = url.indexOf('?');
+        const path = i === -1 ? url : url.slice(0, i);
+        const query = i === -1 ? '' : url.slice(i);
+        arguments[0] = path.replace(/\+/g, '%2B') + query;
+      }
+      return _loadWithXhr.apply(this, arguments);
+    };
+
+    // Geoid separation used for the vertical fix (ellipsoidal = ASL + GEOID_N).
+    const GEOID_N = -34.0;
+
+    const viewer = new Cesium.Viewer('cesiumContainer');
+
+    try {
+      viewer.terrainProvider = await Cesium.createWorldTerrainAsync();
+    } catch (e) {
+      console.error('Terrain failed to load:', e);
+      alert('Terrain failed to load: ' + e.message);
+    }
+
+    // Selbe 3D mesh
+    const tileset = viewer.scene.primitives.add(
+      await Cesium.Cesium3DTileset.fromIonAssetId(6051382),
+    );
+
+    // Get3D delivered orthometric heights (above sea level); Cesium expects
+    // ellipsoidal. Shift down by the geoid separation for Ulaanbaatar.
+    (function (t, offset) {
+      const c = Cesium.Cartographic.fromCartesian(t.boundingSphere.center);
+      const s = Cesium.Cartesian3.fromRadians(c.longitude, c.latitude, 0.0);
+      const e = Cesium.Cartesian3.fromRadians(c.longitude, c.latitude, offset);
+      t.modelMatrix = Cesium.Matrix4.fromTranslation(
+        Cesium.Cartesian3.subtract(e, s, new Cesium.Cartesian3())
+      );
+    })(tileset, GEOID_N);
+
+    const OVERVIEW = { lon: 106.917758, lat: 47.967687, h: 2500, heading: 0.0, pitch: -35.0 };
+
+    function flyToView(v) {
+      viewer.camera.flyTo({
+        destination: Cesium.Cartesian3.fromDegrees(v.lon, v.lat, v.h),
+        orientation: {
+          heading: Cesium.Math.toRadians(v.heading),
+          pitch: Cesium.Math.toRadians(v.pitch),
+          roll: Cesium.Math.toRadians(v.roll || 0.0),
+        }
+      });
+    }
+
+    flyToView(OVERVIEW);
+
+    // Cesium OSM Buildings, clipped out over the survey area
+    const SURVEY = { west: 106.902814, south: 47.957683, east: 106.932706, north: 47.977697 };
+    let buildingTileset;
+    try {
+      buildingTileset = await Cesium.createOsmBuildingsAsync();
+      viewer.scene.primitives.add(buildingTileset);
+
+      const surveyArea = new Cesium.ClippingPolygon({
+        positions: Cesium.Cartesian3.fromDegreesArray([
+          SURVEY.west, SURVEY.south,
+          SURVEY.east, SURVEY.south,
+          SURVEY.east, SURVEY.north,
+          SURVEY.west, SURVEY.north,
+        ]),
+      });
+
+      buildingTileset.clippingPolygons = new Cesium.ClippingPolygonCollection({
+        polygons: [surveyArea],
+        inverse: false,   // false = hide what is INSIDE the polygon
+      });
+    } catch (e) {
+      console.error('OSM buildings failed to load:', e);
+    }
+
+    // ------------------------------------------------------------------
+    // Planning tools
+    // ------------------------------------------------------------------
+
+    const $ = (id) => document.getElementById(id);
+    const C3 = Cesium.Cartesian3;
+    const Carto = Cesium.Cartographic;
+    const deg = Cesium.Math.toDegrees;
+    const EVT = Cesium.ScreenSpaceEventType;
+
+    const store = {
+      get(k, d) { try { const v = localStorage.getItem(k); return v ? JSON.parse(v) : d; } catch (e) { return d; } },
+      set(k, v) { try { localStorage.setItem(k, JSON.stringify(v)); } catch (e) { /* storage unavailable */ } },
+    };
+
+    const toAsl = (h) => h - GEOID_N;
+    const fmtLen = (m) => m < 1000 ? m.toFixed(1) + ' m' : (m / 1000).toFixed(2) + ' km';
+    const fmtArea = (a) => a < 10000 ? Math.round(a).toLocaleString() + ' m²' : (a / 10000).toFixed(2) + ' ha';
+    const hasTerrain = () => !(viewer.terrainProvider instanceof Cesium.EllipsoidTerrainProvider);
+
+    viewer.scene.globe.depthTestAgainstTerrain = true;
+
+    const measureDS = new Cesium.CustomDataSource('measure');
+    const tempDS = new Cesium.CustomDataSource('temp');
+    const propDS = new Cesium.CustomDataSource('proposals');
+    const losDS = new Cesium.CustomDataSource('lineOfSight');
+    const noteDS = new Cesium.CustomDataSource('notes');
+    [measureDS, tempDS, propDS, losDS, noteDS].forEach((ds) => viewer.dataSources.add(ds));
+
+    function pickPoint(pos) {
+      const scene = viewer.scene;
+      if (scene.pickPositionSupported) {
+        const p = scene.pickPosition(pos);
+        if (Cesium.defined(p)) return p;
+      }
+      const ray = viewer.camera.getPickRay(pos);
+      return ray ? scene.globe.pick(ray, scene) : undefined;
+    }
+
+    function raise(p, dh) {
+      const c = Carto.fromCartesian(p);
+      return C3.fromRadians(c.longitude, c.latitude, c.height + dh);
+    }
+
+    async function groundHeights(cartos) {
+      if (!hasTerrain()) return cartos.map(() => NaN);
+      const r = await Cesium.sampleTerrainMostDetailed(viewer.terrainProvider, cartos.map((c) => c.clone()));
+      return r.map((c) => c.height);
+    }
+
+    // Area of a polygon projected onto the local horizontal plane.
+    function planarArea(cartesians) {
+      const enu = Cesium.Transforms.eastNorthUpToFixedFrame(cartesians[0]);
+      const inv = Cesium.Matrix4.inverseTransformation(enu, new Cesium.Matrix4());
+      const pts = cartesians.map((c) => Cesium.Matrix4.multiplyByPoint(inv, c, new C3()));
+      let a = 0;
+      for (let i = 0; i < pts.length; i++) {
+        const p = pts[i], q = pts[(i + 1) % pts.length];
+        a += p.x * q.y - q.x * p.y;
+      }
+      return Math.abs(a) / 2;
+    }
+
+    function horizontalDistance(a, b) {
+      return new Cesium.EllipsoidGeodesic(Carto.fromCartesian(a), Carto.fromCartesian(b)).surfaceDistance;
+    }
+
+    function addPoint(ds, position, color) {
+      return ds.entities.add({
+        position,
+        point: { pixelSize: 8, color, outlineColor: Cesium.Color.BLACK, outlineWidth: 1,
+                 disableDepthTestDistance: Number.POSITIVE_INFINITY },
+      });
+    }
+
+    function addLabel(ds, position, text) {
+      return ds.entities.add({
+        position,
+        label: {
+          text, font: '13px sans-serif', fillColor: Cesium.Color.WHITE,
+          showBackground: true, backgroundColor: Cesium.Color.BLACK.withAlpha(0.7),
+          verticalOrigin: Cesium.VerticalOrigin.BOTTOM, pixelOffset: new Cesium.Cartesian2(0, -12),
+          disableDepthTestDistance: Number.POSITIVE_INFINITY,
+        },
+      });
+    }
+
+    function addLine(ds, positions, color, width = 3) {
+      return ds.entities.add({
+        polyline: { positions, width, material: color, depthFailMaterial: color.withAlpha(0.45),
+                    arcType: Cesium.ArcType.NONE },
+      });
+    }
+
+    // --- Tool mode: our own click handler takes over from entity selection ---
+
+    const sse = viewer.cesiumWidget.screenSpaceEventHandler;
+    const defaultClick = sse.getInputAction(EVT.LEFT_CLICK);
+    sse.removeInputAction(EVT.LEFT_DOUBLE_CLICK);
+    let tool = null;
+
+    function setStatus(t) { $('status').textContent = t; }
+    function setActiveButton(id) {
+      document.querySelectorAll('#panel button.active').forEach((b) => b.classList.remove('active'));
+      if (id) $(id).classList.add('active');
+    }
+
+    function startTool(t) {
+      if (tool) tool.cancel();
+      tool = t;
+      sse.removeInputAction(EVT.LEFT_CLICK);
+      setStatus(t.hint + ' · Esc to cancel');
+      setActiveButton(t.button);
+    }
+
+    function endTool() {
+      tool = null;
+      if (defaultClick) sse.setInputAction(defaultClick, EVT.LEFT_CLICK);
+      setStatus('');
+      setActiveButton(null);
+    }
+
+    // Click points on the model; right-click finishes.
+    function drawTool({ button, hint, min, max, polygon, color, onDone }) {
+      const pts = [];
+      const ents = [];
+      let cursor = null;
+      const live = () => (cursor ? pts.concat([cursor]) : pts);
+      ents.push(tempDS.entities.add({
+        polyline: {
+          positions: new Cesium.CallbackProperty(() => {
+            const a = live();
+            return polygon && a.length > 2 ? a.concat([a[0]]) : a;
+          }, false),
+          width: 2, material: color, depthFailMaterial: color.withAlpha(0.4), arcType: Cesium.ArcType.NONE,
+        },
+      }));
+      if (polygon) {
+        ents.push(tempDS.entities.add({
+          polygon: {
+            hierarchy: new Cesium.CallbackProperty(() => {
+              const a = live();
+              return a.length > 2 ? new Cesium.PolygonHierarchy(a) : undefined;
+            }, false),
+            perPositionHeight: true, material: color.withAlpha(0.25),
+          },
+        }));
+      }
+      const clean = () => ents.forEach((e) => tempDS.entities.remove(e));
+      const t = {
+        button, hint,
+        click(p) {
+          pts.push(p);
+          ents.push(addPoint(tempDS, p, color));
+          if (max && pts.length >= max) t.finish();
+        },
+        move(p) { cursor = p || cursor; },
+        finish() {
+          clean();
+          endTool();
+          if (pts.length >= min) onDone(pts.slice());
+        },
+        cancel() { clean(); endTool(); },
+      };
+      startTool(t);
+    }
+
+    const handler = new Cesium.ScreenSpaceEventHandler(viewer.scene.canvas);
+    handler.setInputAction((e) => {
+      if (!tool) return;
+      const p = pickPoint(e.position);
+      if (p) tool.click(p);
+    }, EVT.LEFT_CLICK);
+    handler.setInputAction(() => { if (tool && tool.finish) tool.finish(); }, EVT.RIGHT_CLICK);
+
+    let lastMove = 0;
+    handler.setInputAction((e) => {
+      const now = performance.now();
+      if (now - lastMove < 50) return;
+      lastMove = now;
+      const p = pickPoint(e.endPosition);
+      updateReadout(p);
+      if (tool && tool.move) tool.move(p);
+    }, EVT.MOUSE_MOVE);
+
+    document.addEventListener('keydown', (e) => { if (e.key === 'Escape' && tool) tool.cancel(); });
+
+    function updateReadout(p) {
+      const c = p && Carto.fromCartesian(p);
+      $('readout').textContent = c
+        ? `${deg(c.latitude).toFixed(6)}° N, ${deg(c.longitude).toFixed(6)}° E · elevation ≈ ${toAsl(c.height).toFixed(1)} m ASL` +
+          floodReadout(c)
+        : '';
+    }
+
+    $('panelToggle').onclick = () => {
+      const p = $('panel');
+      p.classList.toggle('collapsed');
+      $('panelToggle').innerHTML = p.classList.contains('collapsed') ? '+' : '&ndash;';
+    };
+
+    // --- Views & layers ---
+
+    $('viewOverview').onclick = () => flyToView(OVERVIEW);
+    $('viewTop').onclick = () => flyToView({ lon: OVERVIEW.lon, lat: OVERVIEW.lat, h: 3500, heading: 0, pitch: -90 });
+
+    let views = store.get('selbe.views', []);
+    function renderViews() {
+      const ul = $('viewList');
+      ul.innerHTML = '';
+      views.forEach((v, i) => {
+        const li = document.createElement('li');
+        const go = document.createElement('button');
+        go.textContent = v.name;
+        go.onclick = () => flyToView(v);
+        const del = document.createElement('button');
+        del.className = 'link';
+        del.textContent = 'remove';
+        del.onclick = () => { views.splice(i, 1); store.set('selbe.views', views); renderViews(); };
+        li.append(go, del);
+        ul.append(li);
+      });
+    }
+    $('viewSave').onclick = () => {
+      const name = prompt('Name for this view', 'View ' + (views.length + 1));
+      if (!name) return;
+      const c = viewer.camera.positionCartographic;
+      views.push({
+        name, lon: deg(c.longitude), lat: deg(c.latitude), h: c.height,
+        heading: deg(viewer.camera.heading), pitch: deg(viewer.camera.pitch), roll: deg(viewer.camera.roll),
+      });
+      store.set('selbe.views', views);
+      renderViews();
+    };
+    renderViews();
+
+    $('layerMesh').onchange = (e) => { tileset.show = e.target.checked; };
+    $('layerOsm').onchange = (e) => { if (buildingTileset) buildingTileset.show = e.target.checked; };
+
+    // --- Measure ---
+
+    const measureColor = Cesium.Color.fromCssColorString('#ffd54f');
+    const showMeasure = (html) => { $('measureResult').innerHTML = html; };
+
+    $('mDist').onclick = () => drawTool({
+      button: 'mDist', hint: 'Click points along the route · right-click to finish',
+      min: 2, color: measureColor,
+      onDone(pts) {
+        let horiz = 0, slant = 0;
+        for (let i = 1; i < pts.length; i++) {
+          horiz += horizontalDistance(pts[i - 1], pts[i]);
+          slant += C3.distance(pts[i - 1], pts[i]);
+        }
+        const dh = Carto.fromCartesian(pts[pts.length - 1]).height - Carto.fromCartesian(pts[0]).height;
+        addLine(measureDS, pts, measureColor);
+        pts.forEach((p) => addPoint(measureDS, p, measureColor));
+        addLabel(measureDS, pts[pts.length - 1], fmtLen(horiz));
+        showMeasure(`Horizontal distance: <b>${fmtLen(horiz)}</b><br>3D distance: ${fmtLen(slant)}<br>` +
+                    `Height change start → end: ${dh >= 0 ? '+' : ''}${dh.toFixed(1)} m`);
+      },
+    });
+
+    $('mArea').onclick = () => drawTool({
+      button: 'mArea', hint: 'Click the corners of the area · right-click to finish',
+      min: 3, polygon: true, color: measureColor,
+      onDone(pts) {
+        const area = planarArea(pts);
+        let perim = 0;
+        for (let i = 0; i < pts.length; i++) perim += horizontalDistance(pts[i], pts[(i + 1) % pts.length]);
+        measureDS.entities.add({
+          polygon: { hierarchy: new Cesium.PolygonHierarchy(pts), perPositionHeight: true,
+                     material: measureColor.withAlpha(0.3) },
+        });
+        addLine(measureDS, pts.concat([pts[0]]), measureColor);
+        addLabel(measureDS, Cesium.BoundingSphere.fromPoints(pts).center, fmtArea(area));
+        showMeasure(`Area (horizontal): <b>${fmtArea(area)}</b><br>Perimeter: ${fmtLen(perim)}`);
+      },
+    });
+
+    $('mHeight').onclick = () => drawTool({
+      button: 'mHeight', hint: 'Click two points', min: 2, max: 2, color: measureColor,
+      onDone(pts) {
+        const [a, b] = pts.map((p) => Carto.fromCartesian(p));
+        const [lo, hi] = a.height <= b.height ? [a, b] : [b, a];
+        const loP = Carto.toCartesian(lo), hiP = Carto.toCartesian(hi);
+        const corner = C3.fromRadians(lo.longitude, lo.latitude, hi.height);
+        addLine(measureDS, [loP, corner], measureColor);
+        addLine(measureDS, [corner, hiP], measureColor.withAlpha(0.6), 2);
+        addPoint(measureDS, loP, measureColor);
+        addPoint(measureDS, hiP, measureColor);
+        const dh = hi.height - lo.height;
+        addLabel(measureDS, corner, dh.toFixed(1) + ' m');
+        showMeasure(`Height difference: <b>${dh.toFixed(1)} m</b><br>Horizontal distance: ${fmtLen(horizontalDistance(loP, hiP))}`);
+      },
+    });
+
+    $('mBldg').onclick = () => startTool({
+      button: 'mBldg', hint: 'Click a roof to measure its height above ground',
+      async click(p) {
+        endTool();
+        const c = Carto.fromCartesian(p);
+        const [g] = await groundHeights([c]);
+        if (!isFinite(g)) { showMeasure('Ground height unavailable (terrain not loaded).'); return; }
+        const ground = C3.fromRadians(c.longitude, c.latitude, g);
+        addLine(measureDS, [ground, p], measureColor);
+        addPoint(measureDS, p, measureColor);
+        addLabel(measureDS, p, (c.height - g).toFixed(1) + ' m');
+        showMeasure(`Height above ground: <b>≈ ${(c.height - g).toFixed(1)} m</b><br>` +
+                    `Roof elevation ≈ ${toAsl(c.height).toFixed(1)} m ASL, ground ≈ ${toAsl(g).toFixed(1)} m ASL<br>` +
+                    `<span class="warn">Ground comes from Cesium World Terrain, so expect ±1–2 m.</span>`);
+      },
+      cancel() { endTool(); },
+    });
+
+    $('mClear').onclick = () => { measureDS.entities.removeAll(); showMeasure(''); };
+
+    // --- Sun & shadows (Mongolia is UTC+8 all year) ---
+
+    const today = new Date();
+    $('sunDate').value = today.toISOString().slice(0, 10);
+
+    function applySun() {
+      const [y, m, d] = $('sunDate').value.split('-').map(Number);
+      const hours = parseFloat($('sunTime').value);
+      const hh = Math.floor(hours), mm = Math.round((hours - hh) * 60);
+      $('sunTimeLabel').textContent = `${String(hh).padStart(2, '0')}:${String(mm).padStart(2, '0')}`;
+      if (!y) return;
+      viewer.clock.shouldAnimate = false;
+      viewer.clock.currentTime = Cesium.JulianDate.fromDate(new Date(Date.UTC(y, m - 1, d) + (hours - 8) * 3600e3));
+    }
+    $('sunDate').onchange = applySun;
+    $('sunTime').oninput = applySun;
+    document.querySelectorAll('#sunPresets button').forEach((b) => {
+      b.onclick = () => { $('sunDate').value = today.getFullYear() + '-' + b.dataset.date; applySun(); };
+    });
+    $('shadows').onchange = (e) => {
+      viewer.shadows = e.target.checked;
+      viewer.terrainShadows = Cesium.ShadowMode.RECEIVE_ONLY;
+      viewer.scene.globe.enableLighting = e.target.checked;
+      if (e.target.checked) applySun();
+    };
+    $('sunTimeLabel').textContent = '12:00';
+
+    // --- Proposed buildings ---
+
+    let proposals = [];
+    let proposalSeq = 1;
+    const propColor = Cesium.Color.fromCssColorString('#4fc3f7');
+    const overColor = Cesium.Color.fromCssColorString('#ef5350');
+
+    const limit = () => Number($('heightLimit').value) || Infinity;
+    const floorH = () => Number($('floorHeight').value) || 3;
+    const floorsOf = (p) => Math.max(1, Math.floor(p.height / floorH() + 1e-6));
+
+    function styleProposal(p) {
+      const over = p.height > limit();
+      const top = p.base + p.height;
+      p.entity.polygon.extrudedHeight = top;
+      p.entity.polygon.material = (over ? overColor : propColor).withAlpha(0.85);
+      const capH = p.base + Math.min(limit(), 1000);
+      p.cap.polygon.height = capH;
+      p.cap.polygon.extrudedHeight = capH;
+      p.cap.show = isFinite(limit());
+      p.entity.description =
+        `<table class="cesium-infoBox-defaultTable"><tbody>` +
+        `<tr><th>Height</th><td>${p.height} m</td></tr>` +
+        `<tr><th>Floors</th><td>${floorsOf(p)}</td></tr>` +
+        `<tr><th>Footprint</th><td>${fmtArea(p.area)}</td></tr>` +
+        `<tr><th>Gross floor area</th><td>${fmtArea(p.area * floorsOf(p))}</td></tr>` +
+        `<tr><th>Ground elevation</th><td>≈ ${toAsl(p.base).toFixed(1)} m ASL</td></tr>` +
+        `<tr><th>Height limit</th><td>${over ? 'exceeds by ' + (p.height - limit()).toFixed(1) + ' m' : 'within limit'}</td></tr>` +
+        `</tbody></table>`;
+    }
+
+    function createProposal(p) {
+      const positions = C3.fromDegreesArray(p.lonlat.flat());
+      p.positions = positions;
+      p.area = planarArea(positions);
+      p.entity = propDS.entities.add({
+        name: p.name,
+        polygon: {
+          hierarchy: positions, height: p.base, extrudedHeight: p.base + p.height,
+          material: propColor.withAlpha(0.85), outline: true, outlineColor: Cesium.Color.WHITE,
+          shadows: Cesium.ShadowMode.ENABLED,
+        },
+      });
+      // Flat cap at the permitted height, so planners can see the envelope.
+      p.cap = propDS.entities.add({
+        polygon: {
+          hierarchy: positions, height: p.base, extrudedHeight: p.base,
+          material: Cesium.Color.YELLOW.withAlpha(0.18), outline: true, outlineColor: Cesium.Color.YELLOW,
+        },
+      });
+      styleProposal(p);
+      proposals.push(p);
+    }
+
+    function saveProposals() {
+      store.set('selbe.proposals', proposals.map(({ name, lonlat, base, height }) => ({ name, lonlat, base, height })));
+    }
+
+    function updateClipping() {
+      const polys = $('clearSite').checked
+        ? proposals.map((p) => new Cesium.ClippingPolygon({ positions: p.positions }))
+        : [];
+      if (!tileset.clippingPolygons) {
+        if (!polys.length) return;
+        tileset.clippingPolygons = new Cesium.ClippingPolygonCollection({ polygons: polys });
+        return;
+      }
+      tileset.clippingPolygons.removeAll();
+      polys.forEach((cp) => tileset.clippingPolygons.add(cp));
+    }
+
+    function renderProposals() {
+      const ul = $('propList');
+      ul.innerHTML = '';
+      let totalArea = 0, totalGfa = 0, overCount = 0;
+      proposals.forEach((p, i) => {
+        const over = p.height > limit();
+        totalArea += p.area;
+        totalGfa += p.area * floorsOf(p);
+        if (over) overCount++;
+        const li = document.createElement('li');
+        if (over) li.className = 'over';
+        const title = document.createElement('b');
+        title.textContent = p.name + ' ';
+        const h = document.createElement('input');
+        h.type = 'number'; h.min = 1; h.step = 1; h.value = p.height;
+        h.title = 'Height (m)';
+        h.onchange = () => {
+          p.height = Math.max(1, Number(h.value) || p.height);
+          styleProposal(p); saveProposals(); renderProposals();
+        };
+        const meta = document.createElement('div');
+        meta.className = 'meta';
+        meta.textContent = `${floorsOf(p)} floors · footprint ${fmtArea(p.area)} · GFA ${fmtArea(p.area * floorsOf(p))}` +
+          (over ? ` · exceeds limit by ${(p.height - limit()).toFixed(1)} m` : '');
+        const fly = document.createElement('button');
+        fly.className = 'link'; fly.textContent = 'zoom to';
+        fly.onclick = () => viewer.flyTo(p.entity);
+        const del = document.createElement('button');
+        del.className = 'link'; del.textContent = 'delete';
+        del.onclick = () => {
+          propDS.entities.remove(p.entity);
+          propDS.entities.remove(p.cap);
+          proposals.splice(i, 1);
+          saveProposals(); renderProposals(); updateClipping();
+        };
+        li.append(title, h, document.createTextNode(' m '), fly, document.createTextNode(' '), del, meta);
+        ul.append(li);
+      });
+      $('propSummary').innerHTML = proposals.length
+        ? `${proposals.length} proposal(s) · footprint ${fmtArea(totalArea)} · GFA ${fmtArea(totalGfa)}` +
+          (overCount ? `<br><span style="color:#ff8a80">${overCount} over the ${limit()} m height limit</span>` : '')
+        : '';
+    }
+
+    $('propDraw').onclick = () => drawTool({
+      button: 'propDraw', hint: 'Click the footprint corners · right-click to finish',
+      min: 3, polygon: true, color: propColor,
+      async onDone(pts) {
+        const cartos = pts.map((p) => Carto.fromCartesian(p));
+        // Base on the terrain, not the clicked mesh, so roof clicks don't lift the building.
+        let base = Math.min(...(await groundHeights(cartos)));
+        if (!isFinite(base)) base = Math.min(...cartos.map((c) => c.height));
+        createProposal({
+          name: 'Proposal ' + proposalSeq++,
+          lonlat: cartos.map((c) => [deg(c.longitude), deg(c.latitude)]),
+          base,
+          height: Math.max(1, Number($('propHeight').value) || 15),
+        });
+        saveProposals(); renderProposals(); updateClipping();
+      },
+    });
+
+    $('heightLimit').onchange = () => { proposals.forEach(styleProposal); renderProposals(); };
+    $('floorHeight').onchange = () => { proposals.forEach(styleProposal); renderProposals(); };
+    $('clearSite').onchange = updateClipping;
+
+    store.get('selbe.proposals', []).forEach((p) => createProposal(p));
+    proposalSeq = proposals.length + 1;
+    renderProposals();
+
+    // --- Line of sight ---
+
+    let waterEntity = null;
+
+    function terrainBlocks(a, b) {
+      const ca = Carto.fromCartesian(a), cb = Carto.fromCartesian(b);
+      for (let i = 1; i < 50; i++) {
+        const t = i / 50;
+        const c = new Carto(
+          Cesium.Math.lerp(ca.longitude, cb.longitude, t),
+          Cesium.Math.lerp(ca.latitude, cb.latitude, t),
+          Cesium.Math.lerp(ca.height, cb.height, t));
+        const g = viewer.scene.globe.getHeight(c);
+        if (g !== undefined && g > c.height) return Carto.toCartesian(new Carto(c.longitude, c.latitude, g));
+      }
+      return undefined;
+    }
+
+    function runLos(a, b) {
+      losDS.entities.removeAll();
+      const obs = raise(a, Math.max(0, Number($('eyeHeight').value) || 0));
+      const tgt = raise(b, 1.0);
+      const total = C3.distance(obs, tgt);
+      const dir = C3.normalize(C3.subtract(tgt, obs, new C3()), new C3());
+
+      // First thing the ray hits on the mesh, OSM buildings or proposals.
+      let hitPos;
+      let origin = obs;
+      for (let k = 0; k < 3 && !hitPos; k++) {
+        let hit;
+        try { hit = viewer.scene.pickFromRay(new Cesium.Ray(origin, dir), waterEntity ? [waterEntity] : []); } catch (e) { break; }
+        if (!hit || !hit.position) break;
+        const d = C3.distance(obs, hit.position);
+        if (d >= total - 0.5) break;
+        if (C3.distance(origin, hit.position) < 0.5) {
+          origin = C3.add(hit.position, C3.multiplyByScalar(dir, 0.6, new C3()), new C3());
+          continue;
+        }
+        hitPos = hit.position;
+      }
+      const tHit = terrainBlocks(obs, tgt);
+      if (tHit && (!hitPos || C3.distance(obs, tHit) < C3.distance(obs, hitPos))) hitPos = tHit;
+
+      const green = Cesium.Color.fromCssColorString('#66bb6a');
+      addPoint(losDS, obs, Cesium.Color.WHITE);
+      addPoint(losDS, tgt, Cesium.Color.WHITE);
+      if (hitPos) {
+        addLine(losDS, [obs, hitPos], green);
+        addLine(losDS, [hitPos, tgt], overColor);
+        addPoint(losDS, hitPos, overColor);
+        $('losResult').innerHTML = `<b style="color:#ff8a80">Blocked</b> ${fmtLen(C3.distance(obs, hitPos))} from the observer ` +
+          `(target is ${fmtLen(total)} away).`;
+      } else {
+        addLine(losDS, [obs, tgt], green);
+        $('losResult').innerHTML = `<b style="color:#a5d6a7">Clear line of sight</b> over ${fmtLen(total)}.`;
+      }
+    }
+
+    $('losRun').onclick = () => drawTool({
+      button: 'losRun', hint: 'Click the observer, then the target', min: 2, max: 2,
+      color: Cesium.Color.WHITE, onDone: (pts) => runLos(pts[0], pts[1]),
+    });
+    $('losClear').onclick = () => { losDS.entities.removeAll(); $('losResult').innerHTML = ''; };
+
+    // --- Water level (illustrative bathtub surface over the survey area) ---
+
+    let groundMin = 0;
+    function updateWater() {
+      const h = Number($('waterLevel').value);
+      $('waterLabel').textContent = `${toAsl(h).toFixed(1)} m ASL (${(h - groundMin).toFixed(1)} m above lowest ground)`;
+      if (waterEntity) waterEntity.rectangle.height = h;
+    }
+    $('waterLevel').oninput = updateWater;
+    $('waterShow').onchange = (e) => {
+      if (e.target.checked && !waterEntity) {
+        waterEntity = viewer.entities.add({
+          rectangle: {
+            coordinates: Cesium.Rectangle.fromDegrees(SURVEY.west, SURVEY.south, SURVEY.east, SURVEY.north),
+            height: Number($('waterLevel').value),
+            material: Cesium.Color.fromCssColorString('#2e86de').withAlpha(0.55),
+          },
+        });
+      }
+      if (waterEntity) waterEntity.show = e.target.checked;
+    };
+    (async () => {
+      const cartos = [];
+      for (let i = 0; i <= 10; i++) {
+        for (let j = 0; j <= 10; j++) {
+          cartos.push(Carto.fromDegrees(
+            SURVEY.west + (SURVEY.east - SURVEY.west) * i / 10,
+            SURVEY.south + (SURVEY.north - SURVEY.south) * j / 10));
+        }
+      }
+      let hs = [];
+      try { hs = (await groundHeights(cartos)).filter(isFinite); } catch (e) { console.error(e); }
+      if (!hs.length) { $('waterLabel').textContent = 'unavailable (terrain not loaded)'; return; }
+      groundMin = Math.floor(Math.min(...hs));
+      const s = $('waterLevel');
+      s.min = groundMin;
+      s.max = Math.ceil(Math.max(...hs));
+      s.value = groundMin + 2;
+      updateWater();
+    })();
+
+    // --- Rain flood simulation ---
+    // 2D local-inertial shallow-water scheme (Bates et al. 2010, as in LISFLOOD-FP)
+    // on a terrain grid over the survey rectangle. Rain and constant-rate
+    // infiltration are applied to every cell; grid edges are free outflow.
+
+    const G = 9.81;
+    const FLOOD_MIN_SHOWN = 0.05;   // m; thinner sheet flow is not drawn
+    const FLOOD_BINS = [
+      [0.15, [179, 229, 252]], [0.3, [79, 195, 247]], [0.5, [2, 136, 209]],
+      [1.0, [1, 87, 155]], [Infinity, [74, 20, 140]],
+    ];
+    const FLOOD_LABELS = ['5–15 cm', '15–30 cm', '30–50 cm', '0.5–1 m', '> 1 m'];
+    $('fLegend').innerHTML = FLOOD_BINS.map(([, c], i) =>
+      `<span style="--c: rgb(${c.join(',')})">${FLOOD_LABELS[i]}</span>`).join('');
+
+    let F = null;          // simulation state
+    let floodEntity = null;
+    let floodUrl = null;
+    const floodCanvas = document.createElement('canvas');
+
+    function insidePolygon(lon, lat, ring) {
+      let inside = false;
+      for (let i = 0, j = ring.length - 1; i < ring.length; j = i++) {
+        const [xi, yi] = ring[i], [xj, yj] = ring[j];
+        if ((yi > lat) !== (yj > lat) && lon < (xj - xi) * (lat - yi) / (yj - yi) + xi) inside = !inside;
+      }
+      return inside;
+    }
+
+    async function buildFloodGrid() {
+      const res = Math.max(5, Number($('fRes').value) || 10);
+      const midLat = (SURVEY.south + SURVEY.north) / 2, midLon = (SURVEY.west + SURVEY.east) / 2;
+      const W = horizontalDistance(C3.fromDegrees(SURVEY.west, midLat), C3.fromDegrees(SURVEY.east, midLat));
+      const H = horizontalDistance(C3.fromDegrees(midLon, SURVEY.south), C3.fromDegrees(midLon, SURVEY.north));
+      const nx = Math.round(W / res), ny = Math.round(H / res), n = nx * ny;
+      const dLon = (SURVEY.east - SURVEY.west) / nx, dLat = (SURVEY.north - SURVEY.south) / ny;
+      const cartos = [];
+      // Row 0 is the north edge, so the grid maps straight onto the image.
+      for (let j = 0; j < ny; j++) {
+        for (let i = 0; i < nx; i++) {
+          cartos.push(Carto.fromDegrees(SURVEY.west + (i + 0.5) * dLon, SURVEY.north - (j + 0.5) * dLat));
+        }
+      }
+      const zs = await groundHeights(cartos);
+      if (!zs.every(isFinite)) throw new Error('terrain heights unavailable');
+      const z = Float64Array.from(zs);
+      const blocked = new Uint8Array(n);
+      if ($('fObst').checked) {
+        proposals.forEach((p) => {
+          for (let k = 0; k < n; k++) {
+            const lon = SURVEY.west + ((k % nx) + 0.5) * dLon, lat = SURVEY.north - (Math.floor(k / nx) + 0.5) * dLat;
+            if (insidePolygon(lon, lat, p.lonlat)) { z[k] = Math.max(z[k], p.base + p.height); blocked[k] = 1; }
+          }
+        });
+      }
+      return {
+        nx, ny, n, dx: W / nx, dy: H / ny, dLon, dLat, z, blocked,
+        h: new Float64Array(n), hmax: new Float64Array(n),
+        qx: new Float64Array((nx + 1) * ny), qy: new Float64Array(nx * (ny + 1)),
+        t: 0, rainIn: 0, infil: 0, outflow: 0,
+        rain: (Number($('fRain').value) || 0) / 1000 / 3600,
+        dur: (Number($('fDur').value) || 0) * 3600,
+        total: Math.max(0.25, Number($('fTotal').value) || 3) * 3600,
+        inf: (Number($('fInf').value) || 0) / 1000 / 3600,
+        n2: Math.pow(Number($('fN').value) || 0.035, 2),
+        hPeak: 0,
+      };
+    }
+
+    function floodStep(S) {
+      const { nx, ny, dx, dy, z, h, qx, qy, n2 } = S;
+      let hm = 0;
+      for (let k = 0; k < S.n; k++) if (h[k] > hm) hm = h[k];
+      const dt = Math.min(10, 0.7 * Math.min(dx, dy) / Math.sqrt(G * Math.max(hm, 0.01)));
+
+      const face = (q, za, zb, ha, hb, d) => {
+        const ea = za + ha, eb = zb + hb;
+        const hf = Math.max(ea, eb) - Math.max(za, zb);
+        if (hf <= 1e-4) return 0;
+        let f = (q - G * hf * dt * (eb - ea) / d) / (1 + G * dt * n2 * Math.abs(q) / Math.pow(hf, 7 / 3));
+        const lim = hf * Math.sqrt(G * hf);   // keep flow sub-critical for stability on steep slopes
+        return f > lim ? lim : f < -lim ? -lim : f;
+      };
+      for (let j = 0; j < ny; j++) {
+        for (let i = 1; i < nx; i++) {
+          const a = j * nx + i - 1, b = a + 1, k = j * (nx + 1) + i;
+          qx[k] = face(qx[k], z[a], z[b], h[a], h[b], dx);
+        }
+      }
+      for (let j = 1; j < ny; j++) {
+        for (let i = 0; i < nx; i++) {
+          const a = (j - 1) * nx + i, b = a + nx, k = j * nx + i;
+          qy[k] = face(qy[k], z[a], z[b], h[a], h[b], dy);
+        }
+      }
+
+      const area = dx * dy;
+      const rain = S.t < S.dur ? S.rain * dt : 0;
+      let infil = 0, out = 0;
+      for (let j = 0; j < ny; j++) {
+        for (let i = 0; i < nx; i++) {
+          const k = j * nx + i;
+          let v = h[k] + dt * ((qx[j * (nx + 1) + i] - qx[j * (nx + 1) + i + 1]) / dx +
+                               (qy[k] - qy[k + nx]) / dy) + rain;
+          if (v < 0) v = 0;
+          const f = Math.min(v, S.inf * dt);
+          v -= f;
+          infil += f;
+          if (i === 0 || j === 0 || i === nx - 1 || j === ny - 1) { out += v; v = 0; }
+          h[k] = v;
+          if (v > S.hmax[k]) S.hmax[k] = v;
+        }
+      }
+      S.rainIn += rain * S.n * area;
+      S.infil += infil * area;
+      S.outflow += out * area;
+      S.t += dt;
+    }
+
+    function renderFlood() {
+      const S = F;
+      if (floodCanvas.width !== S.nx) { floodCanvas.width = S.nx; floodCanvas.height = S.ny; }
+      const ctx = floodCanvas.getContext('2d');
+      const img = ctx.createImageData(S.nx, S.ny);
+      const src = $('fShowMax').checked ? S.hmax : S.h;
+      let wet10 = 0, wet30 = 0, peak = 0, stored = 0;
+      for (let k = 0; k < S.n; k++) {
+        const d = S.blocked[k] ? 0 : src[k];
+        stored += S.h[k];
+        if (d > 0.1) wet10++;
+        if (d > 0.3) wet30++;
+        if (d > peak) peak = d;
+        if (d < FLOOD_MIN_SHOWN) continue;
+        const c = FLOOD_BINS.find(([max]) => d < max)[1];
+        img.data.set([c[0], c[1], c[2], 205], k * 4);
+      }
+      ctx.putImageData(img, 0, 0);
+      floodUrl = floodCanvas.toDataURL();
+      if (!floodEntity) {
+        floodEntity = viewer.entities.add({
+          rectangle: {
+            coordinates: Cesium.Rectangle.fromDegrees(SURVEY.west, SURVEY.south, SURVEY.east, SURVEY.north),
+            material: new Cesium.ImageMaterialProperty({
+              image: new Cesium.CallbackProperty(() => floodUrl, false), transparent: true,
+            }),
+            classificationType: Cesium.ClassificationType.BOTH,   // drape over terrain and the mesh
+          },
+        });
+      }
+      floodEntity.show = true;
+
+      const area = S.dx * S.dy;
+      const hrs = (s) => `${Math.floor(s / 3600)}:${String(Math.floor(s % 3600 / 60)).padStart(2, '0')}`;
+      const m3 = (v) => Math.round(v).toLocaleString() + ' m³';
+      $('fStats').innerHTML =
+        `Time ${hrs(S.t)} of ${hrs(S.total)} h · ${S.t < S.dur ? 'raining' : 'rain stopped'}` +
+        ` (${(Math.min(S.t, S.dur) * S.rain * 1000).toFixed(0)} mm fallen)<br>` +
+        `${$('fShowMax').checked ? 'Maximum' : 'Current'} depth: deepest <b>${peak.toFixed(2)} m</b> · ` +
+        `&gt;10 cm over <b>${fmtArea(wet10 * area)}</b> · &gt;30 cm over ${fmtArea(wet30 * area)}<br>` +
+        `<span class="meta">Rain ${m3(S.rainIn)} · infiltrated ${m3(S.infil)} · left the area ${m3(S.outflow)}` +
+        ` · on the ground ${m3(stored * area)}</span>`;
+    }
+
+    function floodReadout(c) {
+      if (!F) return '';
+      const lon = deg(c.longitude), lat = deg(c.latitude);
+      const i = Math.floor((lon - SURVEY.west) / F.dLon), j = Math.floor((SURVEY.north - lat) / F.dLat);
+      if (i < 0 || j < 0 || i >= F.nx || j >= F.ny) return '';
+      const k = j * F.nx + i;
+      return F.blocked[k] ? '' : ` · water ${F.h[k].toFixed(2)} m (max ${F.hmax[k].toFixed(2)} m)`;
+    }
+
+    let floodRunning = false;
+    function floodLoop() {
+      if (!floodRunning || !F) return;
+      const t0 = performance.now();
+      while (performance.now() - t0 < 25 && F.t < F.total) floodStep(F);
+      renderFlood();
+      if (F.t >= F.total) { floodRunning = false; setStatus(''); return; }
+      requestAnimationFrame(floodLoop);
+    }
+
+    $('fRun').onclick = async () => {
+      if (!F || F.t >= F.total) {
+        setStatus('Sampling terrain for the flood grid…');
+        try { F = await buildFloodGrid(); } catch (e) { setStatus(''); $('fStats').textContent = 'Could not build grid: ' + e.message; return; }
+        setStatus('');
+      }
+      floodRunning = true;
+      floodLoop();
+    };
+    $('fPause').onclick = () => { floodRunning = false; };
+    $('fReset').onclick = () => {
+      floodRunning = false;
+      F = null;
+      if (floodEntity) floodEntity.show = false;
+      $('fStats').innerHTML = '';
+    };
+    $('fShowMax').onchange = () => { if (F) renderFlood(); };
+    document.querySelectorAll('#stormPresets button').forEach((b) => {
+      b.onclick = () => { $('fRain').value = b.dataset.i; $('fDur').value = b.dataset.d; };
+    });
+
+    // --- Notes & export ---
+
+    let notes = store.get('selbe.notes', []);
+    function drawNotes() {
+      noteDS.entities.removeAll();
+      notes.forEach((n) => {
+        const pos = C3.fromDegrees(n.lon, n.lat, n.h);
+        addPoint(noteDS, pos, Cesium.Color.fromCssColorString('#ff7043'));
+        addLabel(noteDS, pos, n.text.length > 40 ? n.text.slice(0, 40) + '…' : n.text);
+      });
+    }
+    function renderNotes() {
+      const ul = $('noteList');
+      ul.innerHTML = '';
+      notes.forEach((n, i) => {
+        const li = document.createElement('li');
+        const t = document.createElement('div');
+        t.textContent = n.text;
+        const meta = document.createElement('div');
+        meta.className = 'meta';
+        meta.textContent = new Date(n.created).toLocaleString() + ' ';
+        const go = document.createElement('button');
+        go.className = 'link'; go.textContent = 'zoom to';
+        go.onclick = () => viewer.camera.flyToBoundingSphere(
+          new Cesium.BoundingSphere(C3.fromDegrees(n.lon, n.lat, n.h), 60));
+        const del = document.createElement('button');
+        del.className = 'link'; del.textContent = 'delete';
+        del.onclick = () => { notes.splice(i, 1); store.set('selbe.notes', notes); renderNotes(); drawNotes(); };
+        meta.append(go, document.createTextNode(' '), del);
+        li.append(t, meta);
+        ul.append(li);
+      });
+    }
+    $('noteAdd').onclick = () => startTool({
+      button: 'noteAdd', hint: 'Click where the note should go',
+      click(p) {
+        endTool();
+        const text = prompt('Note');
+        if (!text) return;
+        const c = Carto.fromCartesian(p);
+        notes.push({ text, lon: deg(c.longitude), lat: deg(c.latitude), h: c.height, created: new Date().toISOString() });
+        store.set('selbe.notes', notes);
+        renderNotes(); drawNotes();
+      },
+      cancel() { endTool(); },
+    });
+    renderNotes(); drawNotes();
+
+    $('exportBtn').onclick = () => {
+      const fc = {
+        type: 'FeatureCollection',
+        features: [
+          ...proposals.map((p) => ({
+            type: 'Feature',
+            geometry: { type: 'Polygon', coordinates: [[...p.lonlat, p.lonlat[0]]] },
+            properties: {
+              kind: 'proposal', name: p.name, height_m: p.height, floors: floorsOf(p),
+              footprint_m2: Math.round(p.area), gfa_m2: Math.round(p.area * floorsOf(p)),
+              ground_elevation_asl_m: Number(toAsl(p.base).toFixed(1)),
+              height_limit_m: limit(), exceeds_limit: p.height > limit(),
+            },
+          })),
+          ...notes.map((n) => ({
+            type: 'Feature',
+            geometry: { type: 'Point', coordinates: [n.lon, n.lat] },
+            properties: { kind: 'note', text: n.text, created: n.created },
+          })),
+        ],
+      };
+      const a = document.createElement('a');
+      a.href = URL.createObjectURL(new Blob([JSON.stringify(fc, null, 2)], { type: 'application/geo+json' }));
+      a.download = 'selbe-planning.geojson';
+      a.click();
+      setTimeout(() => URL.revokeObjectURL(a.href), 1000);
+    };
+  </script>
+</body>
+</html>
